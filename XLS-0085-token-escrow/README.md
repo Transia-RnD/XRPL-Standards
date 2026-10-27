@@ -64,14 +64,14 @@ The `EscrowCreate` transaction is modified as follows:
   - If the issuer requires authorization and the source is not authorized, the transaction fails with `tecNO_AUTH`.
 
 - **Source Account's Token Holding Issues:**
-  - **IOU Tokens**: If the source lacks a trustline with the issuer, the transaction fails with `tecUNFUNDED `.
+  - **IOU Tokens**: If the source lacks a trustline with the issuer, the transaction fails with `tecNO_LINE`. If the source's trustline balance shows that the source owes the issuer, the transaction fails with `tecNO_PERMISSION`.
   - **MPTs**: If the source does not hold the MPT, the transaction fails with `tecOBJECT_NOT_FOUND`.
 
 - **Source Account is Frozen or Token is Locked:**
   - If the token is frozen (global/individual/deepfreeze) (IOU) or locked (MPT) for the source, the transaction fails with `tecFROZEN`.
 
 - **Insufficient Spendable Balance:**
-  - If the source account lacks sufficient spendable balance, the transaction fails with `tecUNFUNDED`.
+  - If the source account lacks sufficient spendable balance of the token, the transaction fails with `tecINSUFFICIENT_FUNDS`. For XRP, the transaction fails with `tecUNFUNDED`.
 
 **State Changes:**
 
@@ -173,7 +173,7 @@ The `EscrowCreate` transaction is modified as follows:
 | **Require Auth**              | Applicable (`lsfRequireAuth`); accounts must be authorized prior to holding tokens                                  | Applicable (`tfMPTRequireAuth`); accounts must be authorized prior to holding tokens                                |
 | **Destination Authorization** | Not required at creation; required at settlement; cannot be granted during `EscrowFinish` if authorization required | Not required at creation; required at settlement; cannot be granted during `EscrowFinish` if authorization required |
 | **Freeze/Lock Conditions**    | **Deep Freeze** prevents `EscrowFinish`, but allows `EscrowCancel`; Global/Individual Freeze allows both operations | **Lock Conditions (Deep Freeze Equivalent)** prevent `EscrowFinish`, but allow `EscrowCancel`                       |
-| **Transfer Rates/Fees**       | `TransferRate` stored at creation and applied during settlement                                                     | `TransferFee` stored at creation and applied during settlement                                                      |
+| **Transfer Rates/Fees**       | `TransferRate` stored at creation; settlement applies the lower of it and the current `TransferRate`                | `TransferFee` stored at creation; settlement applies the lower of it and the current `TransferFee`                  |
 | **Outstanding Amount**        | Remains unchanged during escrow                                                                                     | Remains unchanged during escrow                                                                                     |
 | **Account Deletion**          | Escrows prevent account deletion                                                                                    | Escrows prevent account deletion                                                                                    |
 
@@ -181,14 +181,14 @@ The `EscrowCreate` transaction is modified as follows:
 
 ### 1.4.1. IOU Tokens (`TransferRate`)
 
-- **Locked Transfer Rate**: The `TransferRate` is captured at the time of `EscrowCreate` and stored in the `Escrow` object. It is used during `EscrowFinish`, even if the issuer changes it later.
+- **Locked Transfer Rate**: The `TransferRate` is captured at the time of `EscrowCreate` and stored in the `Escrow` object. `EscrowFinish` applies the lower of the stored `TransferRate` and the issuer's current `TransferRate`.
 - **Fee Calculation**: The escrowed amount is adjusted according to the `TransferRate` upon settlement, potentially reducing the final amount credited to the destination.
 
 ### 1.4.2. MPTs (`TransferFee`)
 
-- **Locked Transfer Fee**: The `TransferFee` is captured at the time of `EscrowCreate` and stored in the `Escrow` object, similar to IOUs.
+- **Locked Transfer Fee**: The `TransferFee` is captured at the time of `EscrowCreate` and stored in the `Escrow` object, similar to IOUs. `EscrowFinish` applies the lower of the stored `TransferFee` and the issuer's current `TransferFee`.
 - **Fee Calculation**: The escrowed amount is adjusted according to the `TransferFee` upon settlement, potentially reducing the final amount credited to the destination.
-- **Consistent Fee Application**: Both IOUs and MPTs use the transfer rate or fee stored at escrow creation, ensuring predictability for the destination.
+- **Consistent Fee Application**: Both IOUs and MPTs apply the lower of the transfer rate or fee stored at escrow creation and the issuer's current one, so the destination never pays more than the rate or fee at escrow creation.
 
 ## 1.5. Ledger Object Updates
 
@@ -196,11 +196,11 @@ The `EscrowCreate` transaction is modified as follows:
 
 The `Escrow` ledger object is updated as follows:
 
-| Field Name     | JSON Type        | Internal Type | Description                                                                                                                                                    |
-| -------------- | ---------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Amount`       | Object or String | Amount        | The amount to be delivered by the held payment. Can represent XRP, an IOU token, or an MPT. Must always be a positive value.                                   |
-| `TransferRate` | Number           | UInt32        | The transfer rate or fee at which the funds are escrowed, stored at creation and used during settlement. Applicable to both IOUs and MPTs.                     |
-| `IssuerNode`   | Number           | UInt64        | _(Optional)_ The ledger index of the issuer's directory node associated with the `Escrow`. Used when the issuer is neither the source nor destination account. |
+| Field Name     | JSON Type        | Internal Type | Description                                                                                                                                                     |
+| -------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Amount`       | Object or String | Amount        | The amount to be delivered by the held payment. Can represent XRP, an IOU token, or an MPT. Must always be a positive value.                                    |
+| `TransferRate` | Number           | UInt32        | The transfer rate or fee at escrow creation. Settlement applies the lower of this value and the issuer's current rate or fee. Applicable to both IOUs and MPTs. |
+| `IssuerNode`   | Number           | UInt64        | _(Optional)_ The ledger index of the issuer's directory node associated with the `Escrow`. Used when the issuer is neither the source nor destination account.  |
 
 ### 1.5.2 `MPToken` Ledger Object
 
