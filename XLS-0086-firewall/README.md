@@ -1,13 +1,13 @@
 <pre>
   xls: 86
   title: Firewall
-  description: Destination-based security through whitelisted recipients with counterparty authorization and rule-based safeguards
+  description: Destination-based security through whitelisted recipients with counterparty authorization and a fee limit
   author: Kris Dangerfield (@krisdangerfield), Denis Angell (@angell_denis)
   proposal-from: https://github.com/XRPLF/XRPL-Standards/discussions/255
   status: Draft
   category: Amendment
   created: 2024-11-29
-  updated: 2025-09-19
+  updated: 2026-09-02
 </pre>
 
 # Amendment XLS: Firewall
@@ -22,6 +22,7 @@
    - 4.2. [Transactions](#42-transactions)
    - 4.3. [Firewall Check Implementation](#43-firewall-check-implementation)
    - 4.4. [Transaction Firewall Actions](#44-transaction-firewall-actions)
+   - 4.5. [Fields](#45-fields)
 5. [Rationale](#5-rationale)
 6. [Backwards Compatibility](#6-backwards-compatibility)
 7. [Security Considerations](#7-security-considerations)
@@ -116,7 +117,7 @@ Where:
 
 | Field Name        | Constant | Required | Internal Type | Default Value | Description                                                |
 | ----------------- | -------- | -------- | ------------- | ------------- | ---------------------------------------------------------- |
-| LedgerEntryType   | Yes      | Yes      | UINT16        | 0x0085        | Identifies this as a Firewall object                       |
+| LedgerEntryType   | Yes      | Yes      | UINT16        | 0x0091        | Identifies this as a Firewall object                       |
 | Flags             | No       | Yes      | UINT32        | 0             | Reserved for future use                                    |
 | Owner             | Yes      | Yes      | ACCOUNT       | N/A           | Account that owns this firewall                            |
 | Counterparty      | No       | Yes      | ACCOUNT       | N/A           | Account authorized to countersign firewall updates         |
@@ -171,7 +172,7 @@ SHA512Half(KeySpace || OwnerAccountID || AuthorizedAccountID || DestinationTag)
 
 | Field Name        | Constant | Required | Internal Type | Default Value | Description                                 |
 | ----------------- | -------- | -------- | ------------- | ------------- | ------------------------------------------- |
-| LedgerEntryType   | Yes      | Yes      | UINT16        | 0x0856        | Identifies as WithdrawPreauth               |
+| LedgerEntryType   | Yes      | Yes      | UINT16        | 0x0092        | Identifies as WithdrawPreauth               |
 | Flags             | No       | Yes      | UINT32        | 0             | Reserved for future use                     |
 | Account           | Yes      | Yes      | ACCOUNT       | N/A           | Account that owns this preauth              |
 | Authorize         | Yes      | Yes      | ACCOUNT       | N/A           | Account authorized to receive assets        |
@@ -213,15 +214,15 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 
 ##### 4.2.1.1. Fields
 
-| Field Name            | Required?   | JSON Type | Internal Type | Default Value | Description                                 |
-| --------------------- | ----------- | --------- | ------------- | ------------- | ------------------------------------------- |
-| TransactionType       | Yes         | string    | BLOB          | N/A           | Value: "FirewallSet"                        |
-| Counterparty          | Conditional | string    | ACCOUNT       | N/A           | Required for creation, Optional for updates |
-| Backup                | Conditional | string    | ACCOUNT       | N/A           | Required for creation                       |
-| MaxFee                | No          | string    | AMOUNT        | N/A           | Maximum transaction fee allowed (in drops)  |
-| DestinationTag        | No          | number    | UINT32        | N/A           | Tag for backup preauth                      |
-| FirewallID            | Conditional | string    | HASH256       | N/A           | Required for updates                        |
-| CounterpartySignature | Conditional | array     | ARRAY         | N/A           | Required for updates                        |
+| Field Name            | Required?   | JSON Type | Internal Type | Default Value | Description                                              |
+| --------------------- | ----------- | --------- | ------------- | ------------- | -------------------------------------------------------- |
+| TransactionType       | Yes         | string    | BLOB          | N/A           | Value: "FirewallSet"                                     |
+| Counterparty          | Conditional | string    | ACCOUNT       | N/A           | Required for creation, Optional for updates              |
+| Backup                | Conditional | string    | ACCOUNT       | N/A           | Required for creation                                    |
+| MaxFee                | No          | string    | AMOUNT        | N/A           | Maximum transaction fee allowed (in drops)               |
+| DestinationTag        | No          | number    | UINT32        | N/A           | Tag for backup preauth                                   |
+| FirewallID            | Conditional | string    | HASH256       | N/A           | Required for updates                                     |
+| CounterpartySignature | Conditional | object    | OBJECT        | N/A           | Counterparty's signature, required for updates (see 4.5) |
 
 **Conditional Requirements:**
 
@@ -240,7 +241,7 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 5. `temMALFORMED`: sfCounterparty same as Account
 6. `temMALFORMED`: sfBackup same as Account
 7. `temMALFORMED`: sfCounterpartySignature present (forbidden for creation)
-8. `temMALFORMED`: Invalid MaxFee amount (if present)
+8. `temBAD_AMOUNT`: Invalid MaxFee amount (if present)
 9. `temMALFORMED`: Invalid fee amount
 10. `tecDUPLICATE`: Firewall already exists for account
 11. `tecNO_DST`: Counterparty account doesn't exist
@@ -253,13 +254,13 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 1. `temDISABLED`: Amendment not enabled
 2. `temINVALID_FLAG`: Invalid transaction flags set
 3. `temMALFORMED`: Missing sfCounterpartySignature field
-4. `temMALFORMED`: Invalid MaxFee amount (if present)
+4. `temBAD_AMOUNT`: Invalid MaxFee amount (if present)
 5. `tecNO_DST`: New Counterparty account doesn't exist (if changing)
 6. `tecDUPLICATE`: New Counterparty same as existing Counterparty
 7. `temMALFORMED`: sfBackup present (forbidden for updates)
 8. `temMALFORMED`: sfCounterparty same as Account
-9. `temMALFORMED`: CounterpartySignature includes the outer Account
-10. `temBAD_SIGNATURE`: Invalid counterparty signature in CounterpartySignature
+9. `temBAD_SIGNATURE`: Invalid signature in CounterpartySignature
+10. `tefBAD_AUTH`: CounterpartySignature is not signed by the Counterparty account
 11. `tecNO_TARGET`: Referenced firewall not found
 12. `tecNO_PERMISSION`: Account not the firewall owner
 
@@ -272,7 +273,7 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 3. Create WithdrawPreauth entry for Backup account with optional DestinationTag
 4. Increment owner's reserve count by 2
 5. Add both objects to owner's directory
-6. Prevent future master key disable
+6. AccountSet with `asfDisableMaster` is refused while the Firewall exists (see 4.3.4)
 
 **On Update:**
 
@@ -319,11 +320,11 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 
 ##### 4.2.2.1. Fields
 
-| Field Name            | Required? | JSON Type | Internal Type | Default Value | Description             |
-| --------------------- | --------- | --------- | ------------- | ------------- | ----------------------- |
-| TransactionType       | Yes       | string    | BLOB          | N/A           | Value: "FirewallDelete" |
-| FirewallID            | Yes       | string    | HASH256       | N/A           | Firewall to delete      |
-| CounterpartySignature | Yes       | array     | ARRAY         | N/A           | Counterparty signatures |
+| Field Name            | Required? | JSON Type | Internal Type | Default Value | Description                        |
+| --------------------- | --------- | --------- | ------------- | ------------- | ---------------------------------- |
+| TransactionType       | Yes       | string    | BLOB          | N/A           | Value: "FirewallDelete"            |
+| FirewallID            | Yes       | string    | HASH256       | N/A           | Firewall to delete                 |
+| CounterpartySignature | Yes       | object    | OBJECT        | N/A           | Counterparty's signature (see 4.5) |
 
 ##### 4.2.2.2. Failure Conditions
 
@@ -331,8 +332,8 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 2. `temINVALID_FLAG`: Invalid transaction flags set
 3. `temMALFORMED`: Missing sfFirewallID field
 4. `temMALFORMED`: Missing sfCounterpartySignature field
-5. `temMALFORMED`: CounterpartySignature includes the outer Account
-6. `temBAD_SIGNATURE`: Invalid counterparty signature
+5. `temBAD_SIGNATURE`: Invalid signature in CounterpartySignature
+6. `tefBAD_AUTH`: CounterpartySignature is not signed by the Counterparty account
 7. `tecNO_TARGET`: Firewall doesn't exist
 8. `tecNO_PERMISSION`: Account not the firewall owner
 
@@ -363,14 +364,14 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 
 ##### 4.2.3.1. Fields
 
-| Field Name            | Required?   | JSON Type | Internal Type | Default Value | Description              |
-| --------------------- | ----------- | --------- | ------------- | ------------- | ------------------------ |
-| TransactionType       | Yes         | string    | BLOB          | N/A           | Value: "WithdrawPreauth" |
-| Authorize             | Conditional | string    | ACCOUNT       | N/A           | Account to authorize     |
-| Unauthorize           | Conditional | string    | ACCOUNT       | N/A           | Account to unauthorize   |
-| DestinationTag        | No          | number    | UINT32        | N/A           | Optional destination tag |
-| FirewallID            | Yes         | string    | HASH256       | N/A           | Associated firewall      |
-| CounterpartySignature | Yes         | array     | ARRAY         | N/A           | Counterparty signatures  |
+| Field Name            | Required?   | JSON Type | Internal Type | Default Value | Description                        |
+| --------------------- | ----------- | --------- | ------------- | ------------- | ---------------------------------- |
+| TransactionType       | Yes         | string    | BLOB          | N/A           | Value: "WithdrawPreauth"           |
+| Authorize             | Conditional | string    | ACCOUNT       | N/A           | Account to authorize               |
+| Unauthorize           | Conditional | string    | ACCOUNT       | N/A           | Account to unauthorize             |
+| DestinationTag        | No          | number    | UINT32        | N/A           | Optional destination tag           |
+| FirewallID            | Yes         | string    | HASH256       | N/A           | Associated firewall                |
+| CounterpartySignature | Yes         | object    | OBJECT        | N/A           | Counterparty's signature (see 4.5) |
 
 **Conditional Requirements:**
 
@@ -384,10 +385,10 @@ Can be deleted via WithdrawPreauth transaction with counterparty signature.
 4. `temMALFORMED`: Neither sfAuthorize nor sfUnauthorize present
 5. `temMALFORMED`: Missing sfFirewallID field
 6. `temMALFORMED`: Missing sfCounterpartySignature field
-7. `temMALFORMED`: CounterpartySignature includes the outer Account
+7. `temBAD_SIGNATURE`: Invalid signature in CounterpartySignature
 8. `temINVALID_ACCOUNT_ID`: Zero account in Authorize/Unauthorize field
 9. `temCANNOT_PREAUTH_SELF`: Attempting to authorize own account
-10. `temBAD_SIGNATURE`: Invalid counterparty signature
+10. `tefBAD_AUTH`: CounterpartySignature is not signed by the Counterparty account
 11. `tecNO_TARGET`: Firewall doesn't exist
 12. `tecNO_TARGET`: Authorize account doesn't exist (for authorize operation)
 13. `tecDUPLICATE`: Preauth already exists (for authorize operation)
@@ -444,10 +445,9 @@ The firewall check is implemented in the `Transactor::checkFirewall` method whic
 NotTEC
 Transactor::checkFirewall(PreclaimContext const& ctx)
 {
-    // Get the account (handle delegation)
-    auto const account = ctx.tx.isFieldPresent(sfDelegate)
-        ? ctx.tx.getAccountID(sfDelegate)
-        : ctx.tx.getAccountID(sfAccount);
+    // sfAccount is the account whose funds move. For a delegated
+    // transaction this is the delegating account, not sfDelegate.
+    auto const account = ctx.tx.getAccountID(sfAccount);
 
     // Check if firewall exists
     auto const sleFirewall = ctx.view.read(keylet::firewall(account));
@@ -455,8 +455,8 @@ Transactor::checkFirewall(PreclaimContext const& ctx)
         return tesSUCCESS;  // No firewall, proceed normally
 
     // Check fee limit if MaxFee is set (most efficient check first)
-    if (sleFirewall.isFieldPresent(sfMaxFee) &&
-        ctx.tx.getFieldAmount(sfFee) > sleFirewall.getFieldAmount(sfMaxFee))
+    if (sleFirewall->isFieldPresent(sfMaxFee) &&
+        ctx.tx.getFieldAmount(sfFee) > sleFirewall->getFieldAmount(sfMaxFee))
         return tefFIREWALL_BLOCK;  // Fee exceeds maximum allowed
 
     // Check transaction classification
@@ -503,6 +503,15 @@ The `checkFirewall` function is called in the transaction processing pipeline:
 2. Before the transaction-specific preclaim checks
 3. Returns `tefFIREWALL_BLOCK` if the transaction violates firewall rules or exceeds fee limits
 
+#### 4.3.4. Key Management Transactions
+
+`checkFirewall` classifies `SetRegularKey`, `SignerListSet`, and `AccountSet` as `allow`, because they move no value. Each of these transactors performs its own firewall check in preclaim when a Firewall entry exists for `sfAccount`:
+
+- `SetRegularKey` and `SignerListSet` gain an optional `CounterpartySignature` field. When a Firewall exists, the field is required and is verified against the Firewall's `Counterparty` exactly as for `FirewallSet` updates. Missing field: `tefFIREWALL_BLOCK`. Invalid signature: `temBAD_SIGNATURE`. Signed by an account other than the Counterparty: `tefBAD_AUTH`.
+- `AccountSet` with `SetFlag` = `asfDisableMaster` fails with `tecNO_PERMISSION`. The master key cannot be disabled while a Firewall exists.
+- `AccountDelete` fails with `tecHAS_OBLIGATIONS` while a Firewall exists. The Firewall must be deleted first.
+- `FirewallSet`, `FirewallDelete`, and `WithdrawPreauth` cannot be delegated (`Delegation::notDelegatable`).
+
 ### 4.4. Transaction Firewall Actions
 
 Each transaction type is classified with a `FirewallAction` enum value that determines how it interacts with the firewall system:
@@ -513,58 +522,81 @@ enum FirewallAction { check, allow, block };
 
 The classification is embedded in the transaction definition macro system:
 
-| Transaction Type            | FirewallAction | Rationale                                          |
-| --------------------------- | -------------- | -------------------------------------------------- |
-| **Payment**                 | check          | Must validate destination is preauthorized         |
-| **EscrowCreate**            | check          | Creates future payment obligation                  |
-| **EscrowFinish**            | check          | Releases funds to destination                      |
-| **EscrowCancel**            | check          | Returns funds (may have different destination)     |
-| **AccountSet**              | allow          | Only modifies account settings                     |
-| **SetRegularKey**           | allow          | Key management (requires counterparty for changes) |
-| **OfferCreate**             | block          | Could result in uncontrolled asset exchange        |
-| **OfferCancel**             | allow          | Only cancels existing offers                       |
-| **TicketCreate**            | allow          | Only reserves sequence numbers                     |
-| **SignerListSet**           | allow          | Signer management (requires counterparty)          |
-| **PaymentChannelCreate**    | check          | Creates payment channel to destination             |
-| **PaymentChannelFund**      | block          | Adds funds to existing channel                     |
-| **PaymentChannelClaim**     | allow          | Claims from existing channel                       |
-| **CheckCreate**             | check          | Creates check for destination                      |
-| **CheckCash**               | allow          | Cashes existing check                              |
-| **CheckCancel**             | allow          | Cancels existing check                             |
-| **DepositPreauth**          | allow          | Manages incoming payment authorization             |
-| **TrustSet**                | allow          | Trust line management                              |
-| **AccountDelete**           | allow          | Account deletion (significant action)              |
-| **NFTokenMint**             | check          | May have destination                               |
-| **NFTokenBurn**             | allow          | Destroys token                                     |
-| **NFTokenCreateOffer**      | check          | Creates offer with potential destination           |
-| **NFTokenCancelOffer**      | allow          | Cancels existing offer                             |
-| **NFTokenAcceptOffer**      | allow          | Accepts existing offer                             |
-| **Clawback**                | allow          | Issuer right (cannot be blocked)                   |
-| **AMMClawback**             | allow          | Issuer right for AMM                               |
-| **AMMCreate**               | block          | Creates AMM with uncontrolled trading              |
-| **AMMDeposit**              | block          | Adds liquidity to AMM                              |
-| **AMMWithdraw**             | block          | Removes liquidity from AMM                         |
-| **AMMVote**                 | block          | Participates in AMM governance                     |
-| **AMMBid**                  | block          | Bids for AMM auction slot                          |
-| **AMMDelete**               | block          | Deletes empty AMM                                  |
-| **XChain\*** (all)          | block          | Cross-chain operations too complex to validate     |
-| **DIDSet/Delete**           | allow          | DID management                                     |
-| **OracleSet/Delete**        | allow          | Oracle management                                  |
-| **LedgerStateFix**          | allow          | System operation                                   |
-| **MPTokenIssuance\***       | allow          | Token issuance management                          |
-| **MPTokenAuthorize**        | allow          | Token authorization                                |
-| **Credential\***            | allow          | Credential management                              |
-| **NFTokenModify**           | allow          | Modifies existing NFT                              |
-| **PermissionedDomain\***    | allow          | Domain management                                  |
-| **DelegateSet**             | allow          | Delegation management                              |
-| **VaultCreate/Set/Delete**  | block          | Vault management                                   |
-| **VaultDeposit**            | block          | Adds assets to vault                               |
-| **VaultWithdraw**           | block          | Withdraws to destination                           |
-| **VaultClawback**           | block          | Issuer right                                       |
-| **Batch**                   | allow          | Batch processing (individual txns checked)         |
-| **WithdrawPreauth**         | allow          | Firewall preauth management                        |
-| **FirewallSet/Delete**      | allow          | Firewall management                                |
-| **Amendment/Fee/UNLModify** | allow          | System transactions                                |
+| Transaction Type            | FirewallAction | Rationale                                                           |
+| --------------------------- | -------------- | ------------------------------------------------------------------- |
+| **Payment**                 | check          | Must validate destination is preauthorized                          |
+| **EscrowCreate**            | check          | Creates future payment obligation                                   |
+| **EscrowFinish**            | allow          | Pays the Destination fixed at EscrowCreate, which was checked then  |
+| **EscrowCancel**            | allow          | Returns funds to the escrow owner                                   |
+| **AccountSet**              | allow          | Account settings; `asfDisableMaster` refused (see 4.3.4)            |
+| **SetRegularKey**           | allow          | Requires CounterpartySignature while a Firewall exists (see 4.3.4)  |
+| **OfferCreate**             | block          | Could result in uncontrolled asset exchange                         |
+| **OfferCancel**             | allow          | Only cancels existing offers                                        |
+| **TicketCreate**            | allow          | Only reserves sequence numbers                                      |
+| **SignerListSet**           | allow          | Requires CounterpartySignature while a Firewall exists (see 4.3.4)  |
+| **PaymentChannelCreate**    | check          | Creates payment channel to destination                              |
+| **PaymentChannelFund**      | block          | Adds funds to existing channel                                      |
+| **PaymentChannelClaim**     | allow          | Claims from existing channel                                        |
+| **CheckCreate**             | check          | Creates check for destination                                       |
+| **CheckCash**               | allow          | Cashes existing check                                               |
+| **CheckCancel**             | allow          | Cancels existing check                                              |
+| **DepositPreauth**          | allow          | Manages incoming payment authorization                              |
+| **TrustSet**                | allow          | Trust line management                                               |
+| **AccountDelete**           | allow          | Fails with `tecHAS_OBLIGATIONS` while a Firewall exists (see 4.3.4) |
+| **NFTokenMint**             | check          | May have destination                                                |
+| **NFTokenBurn**             | allow          | Destroys token                                                      |
+| **NFTokenCreateOffer**      | check          | Creates offer with potential destination                            |
+| **NFTokenCancelOffer**      | allow          | Cancels existing offer                                              |
+| **NFTokenAcceptOffer**      | allow          | Accepts existing offer                                              |
+| **Clawback**                | allow          | Issuer right (cannot be blocked)                                    |
+| **AMMClawback**             | allow          | Issuer right for AMM                                                |
+| **AMMCreate**               | block          | Creates AMM with uncontrolled trading                               |
+| **AMMDeposit**              | block          | Adds liquidity to AMM                                               |
+| **AMMWithdraw**             | block          | Removes liquidity from AMM                                          |
+| **AMMVote**                 | block          | Participates in AMM governance                                      |
+| **AMMBid**                  | block          | Bids for AMM auction slot                                           |
+| **AMMDelete**               | block          | Deletes empty AMM                                                   |
+| **XChain\*** (all)          | block          | Cross-chain operations too complex to validate                      |
+| **DIDSet/Delete**           | allow          | DID management                                                      |
+| **OracleSet/Delete**        | allow          | Oracle management                                                   |
+| **LedgerStateFix**          | allow          | System operation                                                    |
+| **MPTokenIssuance\***       | allow          | Token issuance management                                           |
+| **MPTokenAuthorize**        | allow          | Token authorization                                                 |
+| **Credential\***            | allow          | Credential management                                               |
+| **NFTokenModify**           | allow          | Modifies existing NFT                                               |
+| **PermissionedDomain\***    | allow          | Domain management                                                   |
+| **DelegateSet**             | allow          | Delegation management                                               |
+| **VaultCreate/Set/Delete**  | block          | Vault management                                                    |
+| **VaultDeposit**            | block          | Adds assets to vault                                                |
+| **VaultWithdraw**           | block          | Withdraws to destination                                            |
+| **VaultClawback**           | block          | Issuer right                                                        |
+| **Batch**                   | allow          | Batch processing (individual txns checked)                          |
+| **WithdrawPreauth**         | allow          | Firewall preauth management                                         |
+| **FirewallSet/Delete**      | allow          | Firewall management                                                 |
+| **Amendment/Fee/UNLModify** | allow          | System transactions                                                 |
+
+### 4.5. Fields
+
+This amendment reuses existing fields wherever one with the required type and meaning already exists, and adds two.
+
+**Reused fields:**
+
+| Field                 | Internal Type | Defined by                | Use here                                                         |
+| --------------------- | ------------- | ------------------------- | ---------------------------------------------------------------- |
+| Counterparty          | ACCOUNT       | Lending Protocol (XLS-66) | Account that must co-sign Firewall changes                       |
+| CounterpartySignature | OBJECT        | Lending Protocol (XLS-66) | Counterparty's signature over the transaction                    |
+| MaxFee                | AMOUNT        | existing                  | Maximum `Fee` allowed on transactions from the protected account |
+| Authorize             | ACCOUNT       | DepositPreauth            | Account to preauthorize as a destination                         |
+| Unauthorize           | ACCOUNT       | DepositPreauth            | Account whose preauthorization is removed                        |
+
+**New fields:**
+
+| Field      | Internal Type | Use here                                                           |
+| ---------- | ------------- | ------------------------------------------------------------------ |
+| FirewallID | HASH256       | Ledger index of the Firewall entry a transaction operates on       |
+| Backup     | ACCOUNT       | Account preauthorized at creation so the owner is never locked out |
+
+`CounterpartySignature` has the same structure and verification as in `LoanSet`: an object carrying `SigningPubKey` and `TxnSignature` for a single signature, or an empty `SigningPubKey` with a `Signers` array for a multi-signed counterparty. The signature is over the same signing data as the outer transaction. `STTx::checkSign` verifies it together with the outer signature; preclaim then checks that the signing account is the Firewall's `Counterparty` (or its signer list meets quorum). A counterparty that uses a signer list is therefore supported without any Firewall-specific signing code.
 
 ## 5. Rationale
 
@@ -598,7 +630,11 @@ The classification is embedded in the transaction definition macro system:
 
 **Counterparty System**: Provides a second layer of security for firewall changes, preventing single points of failure. Even with master key compromise, an attacker cannot disable protections.
 
-**Enforced Backup Account**: Ensures users cannot lock themselves out during initial setup, addressing common security configuration errors.
+**Enforced Backup Account**: Ensures users cannot lock themselves out during initial setup, addressing common security configuration errors. After creation the Backup entry is an ordinary WithdrawPreauth and can be removed with counterparty approval like any other.
+
+**Escrow Finish and Cancel**: Allowed because `EscrowFinish` pays the `Destination` fixed at `EscrowCreate`, which was checked when the escrow was created, and `EscrowCancel` returns funds to the escrow owner. Classifying them as `check` would block a firewalled account from ever settling its own escrows, since neither transaction carries a `Destination` field.
+
+**No Rule Language**: An earlier draft defined a `FirewallRule` object with comparison operators over transaction fields. It was removed because a rule language has to be parsed, displayed, and audited by every wallet and every reviewer, and a misconfigured rule fails in exactly the way the Firewall exists to prevent. The shipped model has three configurable inputs, a `Counterparty`, an optional `MaxFee`, and a set of `WithdrawPreauth` destinations, each of which a wallet can display without executing anything. Open-ended account logic belongs to a smart-contract layer if one is adopted.
 
 **Destination Tag Support**: Allows fine-grained control over authorized destinations, supporting exchange accounts and service providers that require specific tags.
 
@@ -615,9 +651,9 @@ This amendment introduces no backwards incompatibilities:
 - Accounts without firewalls continue operating normally
 - All existing transaction types remain functional
 - The feature is entirely opt-in
-- No changes to existing ledger entries or transaction formats
+- `SetRegularKey` and `SignerListSet` gain an optional `CounterpartySignature` field; no other existing ledger entry or transaction format changes
 - Existing destination tag functionality is preserved and enhanced
-- Delegated transactions are properly handled
+- Delegated transactions are checked against the Firewall of the account whose funds move (`sfAccount`), not the delegate
 - Fee limits are optional and do not affect accounts without firewalls
 
 ## 7. Security Considerations
@@ -787,6 +823,9 @@ A: No, MaxFee only applies to transaction fees, not reserve requirements.
 **Q: Can I set MaxFee without setting up full firewall protection?**
 A: No, MaxFee is part of the Firewall object. You must enable the full firewall system.
 
-### 8.3. Reference Implementation
+**Q: Is there a rule language? Can I write custom conditions?**
+A: No. The Firewall has three configurable inputs: the Counterparty account, the optional MaxFee, and the set of WithdrawPreauth destinations (with optional destination tags). Every other behavior is fixed by the transaction type table in 4.4. See "No Rule Language" in the Rationale.
+
+### 8.2. Reference Implementation
 
 The reference implementation will be provided as a pull request to the rippled repository upon advancement to Final status.
